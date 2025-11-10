@@ -68,7 +68,7 @@ fn setup_files(dir: &PathBuf) -> Result<()> {
 
 fn setup_main(path: &PathBuf) -> Result<()> {
     let cwd = current_dir().expect("Failed to read current directory");
-    let new_main = cwd.join("add-day").join("main.rs");
+    let new_main = cwd.join("add-day").join("main-template.rs");
 
     fs::copy(new_main, path);
     Ok(())
