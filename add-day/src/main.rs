@@ -11,11 +11,12 @@ fn main() {
     println!("Creating new day: {}", new_day);
     let new_day_path = cwd.join(new_day.to_string());
     println!("Setting up files for the project");
-    let _ = create_new_day(new_day).expect("Failed to create new day");
+    let _ = create_new_day(&new_day).expect("Failed to create new day");
     let _ = setup_files(&new_day_path).expect("Failed to setup files");
+    let _ = add_input_files(&new_day);
 }
 
-fn create_new_day(day: String) -> Result<()> {
+fn create_new_day(day: &str) -> Result<()> {
     let output = Command::new("cargo")
         .args(["new", &day])
         .output()
@@ -40,6 +41,11 @@ fn get_new_day_number(dir: &PathBuf) -> Result<String> {
             day_vec.push(path.file_name().unwrap().to_owned());
         }
     }
+
+    if day_vec.is_empty() {
+        return Ok(String::from("day01"));
+    }
+
     day_vec.sort();
     let last_day = day_vec[day_vec.len() - 1]
         .to_str()
@@ -67,7 +73,7 @@ fn setup_files(dir: &PathBuf) -> Result<()> {
 }
 
 fn setup_main(path: &PathBuf) -> Result<()> {
-    let cwd = current_dir().expect("Failed to read current directory");
+    let cwd = current_dir()?;
     let new_main = cwd.join("add-day").join("main-template.rs");
 
     fs::copy(new_main, path)?;
@@ -80,6 +86,19 @@ fn setup_cargo_toml(path: &PathBuf) -> Result<()> {
         .open(path)?;
 
     write!(file, "{}", "utils = { path = \"../utils\" }")?;
+    Ok(())
+}
+
+fn add_input_files(day: &str) -> Result<()> {
+    if !fs::exists("/inputs")? {
+        fs::create_dir("/inputs")?;
+    }
+
+    for i in 0..3 {
+        let filename = format!("{day}pt{}.txt", i + 1);
+        fs::File::create(format!("inputs/{filename}"))?;
+    }
+
     Ok(())
 }
 
