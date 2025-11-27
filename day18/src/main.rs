@@ -1,28 +1,28 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
+
+use itertools::Itertools;
 
 use utils::read_input;
 
 #[derive(Debug, Clone)]
 struct Plant {
     id: usize,
-    thickness: isize,
     energy: isize,
-    parents: Vec<usize>,
+    pos_parents: Vec<usize>,
+    neg_parents: Vec<usize>,
 }
 
 impl Plant {
     fn from_description(description: &str, plants: &HashMap<usize, Plant>, instruction_map: Option<&HashMap<usize, bool>>) -> Plant {
         let mut lines = description.lines();
         let first_line = lines.next().unwrap();
-        let numbers = first_line[6..first_line.len() - 1]
-            .split("with thickness")
-            .map(|x| x.trim().parse::<isize>().unwrap())
-            .collect::<Vec<_>>();
+        let numbers = Self::parse_first_line(first_line);
         let id = numbers[0] as usize;
         let thickness = numbers[1];
 
         let mut energy = 0;
-        let mut parents = Vec::new();
+        let mut pos_parents = Vec::new();
+        let mut neg_parents = Vec::new();
 
         for line in lines {
             if line.contains("free") {
@@ -34,12 +34,15 @@ impl Plant {
                 energy += branch_thickness;
             }
             else {
-                let numbers = line[18..].split("with thickness ")
-                    .map(|x| x.trim().parse::<isize>().unwrap())
-                    .collect::<Vec<_>>();
+                let numbers = Self::parse_connected_plant(line);
                 let parent = numbers[0] as usize;
-                parents.push(parent);
                 let parent_thickness = numbers[1];
+                if parent_thickness >= 0 {
+                    pos_parents.push(parent);
+                }
+                else {
+                    neg_parents.push(parent);
+                }
 
                 energy += plants.get(&parent).unwrap().energy * parent_thickness;
             }
@@ -49,17 +52,20 @@ impl Plant {
             energy = 0;
         }
 
-        Plant { id, thickness, energy, parents }
+        Plant { id, energy, pos_parents, neg_parents }
 
+    }
+
+    fn parse_connected_plant(line: &str) -> Vec<isize> {
+        line[18..].split("with thickness ")
+            .map(|x| x.trim().parse::<isize>().unwrap())
+            .collect::<Vec<_>>()
     }
 
     fn new_max_possible(description: &str, max_free: usize) -> Option<Plant> {
         let mut lines = description.lines();
         let first_line = lines.next().unwrap();
-        let numbers = first_line[6..first_line.len() - 1]
-            .split("with thickness")
-            .map(|x| x.trim().parse::<isize>().unwrap())
-            .collect::<Vec<_>>();
+        let numbers = Self::parse_first_line(first_line);
         let id = numbers[0] as usize;
         if id < max_free {
             return None
@@ -67,20 +73,23 @@ impl Plant {
         let thickness = numbers[1];
 
         let mut energy = 0;
-        let mut parents = Vec::new();
+        let mut pos_parents = Vec::new();
+        let mut neg_parents = Vec::new();
 
         for line in lines {
-            let numbers = line[18..].split("with thickness ")
-                .map(|x| x.trim().parse::<isize>().unwrap())
-                .collect::<Vec<_>>();
+            let numbers = Self::parse_connected_plant(line);
             let parent = numbers[0] as usize;
-            parents.push(parent);
 
             if parent > max_free {
                 return None
             }
             let parent_thickness = numbers[1];
-
+            if parent_thickness >= 0 {
+                pos_parents.push(parent);
+            }
+            else {
+                neg_parents.push(parent);
+            }
             if parent_thickness > 0 {
                 energy += parent_thickness;
             }
@@ -88,31 +97,34 @@ impl Plant {
         }
 
         if energy < thickness {
-            return Some(Plant { id, thickness, energy: 0 , parents });
+            return Some(Plant { id, energy: 0 , pos_parents, neg_parents });
         }
 
-        Some(Plant { id, thickness, energy , parents })
+        Some(Plant { id, energy , pos_parents, neg_parents })
     }
 
     fn useful_node(description: &str, max_free: usize, not_useful: &HashMap<usize, Plant>) -> Option<Plant> {
         let mut lines = description.lines();
         let first_line = lines.next().unwrap();
-        let numbers = first_line[6..first_line.len() - 1]
-            .split("with thickness")
-            .map(|x| x.trim().parse::<isize>().unwrap())
-            .collect::<Vec<_>>();
+        let numbers = Self::parse_first_line(first_line);
         let id = numbers[0] as usize;
         if id < max_free {
             return None
         }
-        let mut parents = Vec::new();
+        let mut pos_parents = Vec::new();
+        let mut neg_parents = Vec::new();
 
         for line in lines {
-            let numbers = line[18..].split("with thickness ")
-                .map(|x| x.trim().parse::<isize>().unwrap())
-                .collect::<Vec<_>>();
+            let numbers = Self::parse_connected_plant(line);
             let parent = numbers[0] as usize;
-            parents.push(parent);
+            let parent_thickness = numbers[1];
+            if parent_thickness >= 0 {
+                pos_parents.push(parent);
+            }
+            else {
+                neg_parents.push(parent);
+            }
+
 
             if parent > max_free {
                 return None
@@ -120,11 +132,18 @@ impl Plant {
 
         }
 
-        if parents.iter().all(|p| not_useful.contains_key(p)) {
+        if pos_parents.iter().all(|p| not_useful.contains_key(p)) {
             return None;
         }
 
-        Some(Plant { id, thickness: 0, energy: 0 , parents })
+        Some(Plant { id, energy: 0 , pos_parents, neg_parents })
+    }
+
+    fn parse_first_line(line: &str) -> Vec<isize> {
+        line[6..line.len() - 1]
+            .split("with thickness")
+            .map(|x| x.trim().parse::<isize>().unwrap())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -169,11 +188,9 @@ fn part_3() {
     // contributions are too low. This means that some nodes can be trimmed
     let input = parse("inputs/day18pt3.txt");
     let mut instructions = parse_instructions(&input);
-    let mut max = 0;
+    let mut sum = 0;
 
     let num_free_plants = get_instruction(&instructions[0]).len();
-    println!("num free: {}", num_free_plants);
-
     let mut plants: HashMap<usize, Plant> = HashMap::new();
 
     input.iter()
@@ -214,37 +231,64 @@ fn part_3() {
             }
         });
 
-    let mut useful_roots: HashSet<usize> = HashSet::new();
-    let mut queue = VecDeque::new();
+    let mut overall_positive: HashSet<usize> = HashSet::new();
+    let mut overall_negative: HashSet<usize> = HashSet::new();
+    useful_plants.iter()
+        .for_each(|(_, plant)| {
+            overall_positive.extend(plant.pos_parents.iter());
+            overall_negative.extend(plant.neg_parents.iter());
+        });
 
-    queue.extend(useful_plants.keys());
-
-    while let Some(plant_id) = queue.pop_front() {
-        queue.extend(&plants.get(&plant_id).unwrap().parents);
-        if plant_id <= num_free_plants {
-            useful_roots.insert(plant_id);
-        }
-    }
-
-    println!("useful roots: {:?}", useful_roots.len());
+    let possible_combinations = all_combinations_itertools(&overall_positive, &overall_negative);
+    let mut max_possible = 0;
+    possible_combinations
+        .for_each(|combination|{
+            let try_instruction: HashMap<usize, bool> = (1..num_free_plants + 1)
+                .map(|x| (x, combination.contains(&x)))
+                .collect();
+            let max_try = get_max_value_current_instruction(&try_instruction, &input);
+            if max_try > max_possible {
+                max_possible = max_try;
+            }
+        });
 
     while let Some(instruction) = instructions.pop() {
         let result = try_instructions(&instruction, &input);
-        if result > max {
-            max = result;
+        if result != 0 {
+            sum += max_possible - result;
         }
 
     }
-    println!("Part 3: {:?}", max);
+    println!("Part 3: {:?}", sum);
+}
+
+fn all_combinations_itertools(good: &HashSet<usize>, bad: &HashSet<usize>) -> impl Iterator<Item = HashSet<usize>> {
+    let always_included: Vec<usize> = good.difference(bad).copied().collect();
+    let overlapping: Vec<usize> = good.intersection(bad).copied().collect();
+
+    (0..=overlapping.len()).flat_map(move |k| {
+        let always_included = always_included.clone();  // Clone for each k
+        let overlapping = overlapping.clone();          // Clone for each k
+
+        overlapping.into_iter().combinations(k).map(move |combo| {
+            let mut set: HashSet<usize> = always_included.iter().copied().collect();
+            set.extend(combo);
+            set
+        })
+    })
 }
 
 fn try_instructions(instruction: &str, input: &[String]) -> isize {
-    let instruction = get_instruction(&instruction);
+    let instruction = get_instruction(instruction);
+    get_max_value_current_instruction(&instruction, input)
+}
+
+fn get_max_value_current_instruction(instruction: &HashMap<usize, bool>, input: &[String]) -> isize {
     let mut plants: HashMap<usize, Plant> = HashMap::new();
     input.iter()
         .filter(|line| line.contains("Plant"))
         .for_each(|descr| {
-            let plant = Plant::from_description(descr, &plants, Some(&instruction));
+            let plant = Plant::from_description(descr, &plants, Some(instruction));
             plants.insert(plant.id, plant);
         });
     plants.iter()
