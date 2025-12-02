@@ -21,10 +21,12 @@ fn part_2() {
 }
 
 fn part_3() {
-    println!("Part 3: {:?}", 0);
+    let input = parse("inputs/day19pt3.txt");
+    let flaps = bfs(&input);
+    println!("Part 3: {:?}", flaps);
 }
 
-fn bfs(triplets: &HashMap<isize, Vec<Vec<isize>>>) -> isize {
+fn bfs(triplets: &HashMap<isize, Vec<[isize; 3]>>) -> isize {
     let mut x_points = triplets.keys().cloned().collect::<Vec<_>>();
     x_points.sort();
     x_points.insert(0, 0);
@@ -40,11 +42,18 @@ fn bfs(triplets: &HashMap<isize, Vec<Vec<isize>>>) -> isize {
 
         for (&curr_y, &curr_flaps) in &current {
             for opening in &triplets[&x_points[i + 1]] {
-                if let Some(options) = take_obstacle(opening, *x, curr_y) {
-                    for option in options {
-                        new.entry(option[1])
-                            .and_modify(|v| *v = (*v).min(curr_flaps + option[2]))
-                            .or_insert(curr_flaps + option[2]);
+                let dx = opening[0] - x;
+                // Each step in x-direction is either a flap or not (i.e. difference of two if one
+                // is swapped for the other)
+                let y_max = dx + curr_y;
+                let y_min = -dx + curr_y;
+                let parity = y_max % 2;
+                for y_new in opening[1]..opening[1] + opening[2] {
+                    if y_new >= y_min && y_new <= y_max && y_new % 2 == parity {
+                        let new_flaps = ((y_new - curr_y) + dx) / 2;
+                        new.entry(y_new)
+                            .and_modify(|v| *v = (*v).min(curr_flaps + new_flaps))
+                            .or_insert(curr_flaps + new_flaps);
                     }
                 }
             }
@@ -55,46 +64,20 @@ fn bfs(triplets: &HashMap<isize, Vec<Vec<isize>>>) -> isize {
     *current.values().min().unwrap()
 }
 
-
-
-fn take_obstacle(obstacle: &[isize], x: isize, y: isize) -> Option<Vec<Vec<isize>>> {
-    let dx = obstacle[0] - x;
-    // Each step in x-direction is either a flap or not (i.e. difference of two in height if one
-    // is swapped for the other)
-    let y_max = dx + y;
-    let y_min = -dx + y;
-
-    let obstacle_opening: Vec<isize> = (obstacle[1]..obstacle[1] + obstacle[2])
-        .collect();
-
-    let possible: Vec<(usize, isize)> = (y_min..=y_max).step_by(2)
-        .enumerate()
-        .filter(|(_, y_new)| obstacle_opening.contains(y_new))
-        .collect();
-
-    if possible.is_empty() {
-        return None;
-    }
-
-    let possible_end_points = possible.iter()
-        .map(|(i, y_new)| vec![obstacle[0], *y_new, *i as isize])
-        .collect();
-
-    Some(possible_end_points)
-}
-
-fn parse(filename: &str) -> HashMap<isize, Vec<Vec<isize>>> {
+fn parse(filename: &str) -> HashMap<isize, Vec<[isize; 3]>> {
     let mut obstacles = HashMap::new();
     read_lines(filename)
         .iter()
         .for_each(|line| {
-            let vec = line.split(",")
+            let array: [isize;3] = line.split(",")
                 .map(|x| x.parse::<isize>()
                     .unwrap())
-                .collect::<Vec<isize>>();
-            obstacles.entry(vec[0])
-                .and_modify(|v: &mut Vec<Vec<isize>>| v.push(vec.clone()))
-                .or_insert(vec![vec]);
+                .collect::<Vec<isize>>()
+                .try_into()
+                .unwrap();
+            obstacles.entry(array[0])
+                .and_modify(|v: &mut Vec<[isize;3]>| v.push(array))
+                .or_insert(vec![array]);
         });
     obstacles
 }
